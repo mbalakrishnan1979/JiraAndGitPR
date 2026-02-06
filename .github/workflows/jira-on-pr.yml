@@ -1,1 +1,50 @@
 
+name: Create Jira ticket on PR
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  jira:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check if PR already has Jira key
+        id: check
+        run: |
+          if [[ "${{ github.event.pull_request.title }}" =~ [A-Z]+-[0-9]+ ]]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Jira issue
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/2/issue" \
+            -d '{
+              "fields": {
+                "project": { "key": "'"${{ secrets.JIRA_PROJECT_KEY }}"'" },
+                "summary": "'"${{ github.event.pull_request.title }}"'",
+                "description": "GitHub PR: ${{ github.event.pull_request.html_url }}",
+                "issuetype": { "name": "Task" }
+              }
+            }')
+
+          echo "JIRA_KEY=$(echo $RESPONSE | jq -r .key)" >> $GITHUB_ENV
+
+      - name: Update PR title with Jira key
+        if: env.JIRA_KEY != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              title: `${process.env.JIRA_KEY} ${context.payload.pull_request.title}`
+            })
