@@ -33,6 +33,11 @@ jobs:
               }
             }')
 
+          echo "${{ secrets.JIRA_PROJECT_KEY }}"
+          echo "${{ secrets.JIRA_TOKEN }}"
+          echo "${{ secrets.JIRA_BASE_URL }}"
+          echo "${{ secrets.JIRA_USER }}"
+          
           BODY=$(echo "$RESPONSE" | head -n -1)
           STATUS=$(echo "$RESPONSE" | tail -n 1)
 
