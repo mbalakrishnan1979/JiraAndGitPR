@@ -1,38 +1,54 @@
-  name: Create Jira issue
-  run: |
-    set -e
+name: Create Jira ticket on PR
 
-    echo "Creating Jira issue..."
+on:
+  pull_request:
+    types: [opened]
 
-    RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-      -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
-      -H "Content-Type: application/json" \
-      "${{ secrets.JIRA_BASE_URL }}/rest/api/2/issue" \
-      -d '{
-        "fields": {
-          "project": { "key": "'"${{ secrets.JIRA_PROJECT_KEY }}"'" },
-          "summary": "'"${{ github.event.pull_request.title }}"'",
-          "description": "GitHub PR: ${{ github.event.pull_request.html_url }}",
-          "issuetype": { "name": "Task" }
-        }
-      }')
+permissions:
+  pull-requests: write
+  contents: read
 
-    BODY=$(echo "$RESPONSE" | head -n -1)
-    STATUS=$(echo "$RESPONSE" | tail -n 1)
+jobs:
+  jira:
+    runs-on: ubuntu-latest
 
-    echo "Jira response status: $STATUS"
-    echo "Jira response body: $BODY"
+    steps:
+      - name: Create Jira issue
+        shell: bash
+        run: |
+          set -e
 
-    if [ "$STATUS" != "201" ]; then
-      echo "Jira issue creation failed"
-      exit 1
-    fi
+          echo "Creating Jira issue..."
 
-    JIRA_KEY=$(echo "$BODY" | jq -r '.key')
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            "${{ secrets.JIRA_BASE_URL }}/rest/api/2/issue" \
+            -d '{
+              "fields": {
+                "project": { "key": "'"${{ secrets.JIRA_PROJECT_KEY }}"'" },
+                "summary": "'"${{ github.event.pull_request.title }}"'",
+                "description": "GitHub PR: ${{ github.event.pull_request.html_url }}",
+                "issuetype": { "name": "Task" }
+              }
+            }')
 
-    if [ "$JIRA_KEY" = "null" ]; then
-      echo "Jira key not returned"
-      exit 1
-    fi
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
 
-    echo "JIRA_KEY=$JIRA_KEY" >> $GITHUB_ENV
+          echo "Jira response status: $STATUS"
+          echo "Jira response body: $BODY"
+
+          if [ "$STATUS" != "201" ]; then
+            echo "Jira issue creation failed"
+            exit 1
+          fi
+
+          JIRA_KEY=$(echo "$BODY" | jq -r '.key')
+
+          if [ "$JIRA_KEY" = "null" ]; then
+            echo "Jira key not returned"
+            exit 1
+          fi
+
+          echo "JIRA_KEY=$JIRA_KEY" >> $GITHUB_ENV
