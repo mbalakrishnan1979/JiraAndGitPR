@@ -1,28 +1,26 @@
-
 name: Create Jira ticket on PR
 
 on:
   pull_request:
     types: [opened]
 
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
   jira:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check if PR already has Jira key
-        id: check
-        run: |
-          if [[ "${{ github.event.pull_request.title }}" =~ [A-Z]+-[0-9]+ ]]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create Jira issue
-        if: steps.check.outputs.exists == 'false'
+        shell: bash
         run: |
-          RESPONSE=$(curl -s -X POST \
+          set -e
+
+          echo "Creating Jira issue..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -u "${{ secrets.JIRA_USER }}:${{ secrets.JIRA_TOKEN }}" \
             -H "Content-Type: application/json" \
             "${{ secrets.JIRA_BASE_URL }}/rest/api/2/issue" \
@@ -35,16 +33,27 @@ jobs:
               }
             }')
 
-          echo "JIRA_KEY=$(echo $RESPONSE | jq -r .key)" >> $GITHUB_ENV
+          echo "${{ secrets.JIRA_PROJECT_KEY }}"
+          echo "${{ secrets.JIRA_TOKEN }}"
+          echo "${{ secrets.JIRA_BASE_URL }}"
+          echo "${{ secrets.JIRA_USER }}"
+          
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          STATUS=$(echo "$RESPONSE" | tail -n 1)
 
-      - name: Update PR title with Jira key
-        if: env.JIRA_KEY != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.pulls.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-              title: `${process.env.JIRA_KEY} ${context.payload.pull_request.title}`
-            })
+          echo "Jira response status: $STATUS"
+          echo "Jira response body: $BODY"
+
+          if [ "$STATUS" != "201" ]; then
+            echo "Jira issue creation failed"
+            exit 1
+          fi
+
+          JIRA_KEY=$(echo "$BODY" | jq -r '.key')
+
+          if [ "$JIRA_KEY" = "null" ]; then
+            echo "Jira key not returned"
+            exit 1
+          fi
+
+          echo "JIRA_KEY=$JIRA_KEY" >> $GITHUB_ENV
